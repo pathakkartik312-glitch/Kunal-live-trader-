@@ -29,7 +29,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix Kotlin Compose Configuration
+      - name: Fix Kotlin and Compose Configuration
         working-directory: extracted
         run: |
           python3 - <<'PY'
@@ -39,58 +39,52 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Remove ALL Compose compiler plugin declarations from app module.
+          # Remove ALL Compose compiler plugin declarations.
           text = re.sub(
-              r'^\s*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\']\)(?:\s+version\s+["\'][^"\']+["\'])?\s*$',
+              r'^\s*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\']\).*?$',
               '',
               text,
               flags=re.MULTILINE
           )
 
-          # Remove old composeOptions block.
+          # Remove old Compose compiler options.
           text = re.sub(
               r'\n\s*composeOptions\s*\{.*?\n\s*\}',
               '',
               text,
-              flags=re.DOTALL
+              flags=re.S
           )
 
           # Remove old Compose compiler dependencies.
           text = re.sub(
-              r'^\s*(?:implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler:[^"\']+["\']\s*\)\s*$',
+              r'^\s*(implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler[^)]*\)\s*$',
               '',
               text,
               flags=re.MULTILINE
           )
 
-          # Clean empty duplicate blank lines.
-          text = re.sub(r'\n{3,}', '\n\n', text)
+          p.write_text(text)
+
+          # Add Compose plugin exactly once, matching Kotlin 2.2.10.
+          text = p.read_text()
+
+          if 'id("org.jetbrains.kotlin.plugin.compose")' not in text:
+              text = text.replace(
+                  "plugins {",
+                  'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
+                  1
+              )
 
           p.write_text(text)
 
           print("===== FINAL APP BUILD FILE =====")
-          print(text)
+          print(p.read_text())
           PY
-
-      - name: Verify Project
-        working-directory: extracted
-        run: |
-          echo "===== SETTINGS ====="
-          cat settings.gradle.kts
-
-          echo "===== ROOT BUILD ====="
-          cat build.gradle.kts
-
-          echo "===== APP BUILD ====="
-          cat app/build.gradle.kts
-
-          echo "===== VERSION CATALOG ====="
-          grep -nE 'kotlin|compose|ksp|agp' gradle/libs.versions.toml || true
 
       - name: Generate Gradle Wrapper
         working-directory: extracted
         run: |
-          gradle wrapper --gradle-version 9.7.0
+          gradle wrapper --gradle-version 8.14.3
 
       - name: Create Debug Keystore
         working-directory: extracted
@@ -105,6 +99,15 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Verify Compose Plugin
+        working-directory: extracted
+        run: |
+          echo "===== COMPOSE REFERENCES ====="
+          grep -Rni "compose.plugin\|composeOptions\|compose.compiler" \
+            app/build.gradle.kts \
+            build.gradle.kts \
+            gradle/libs.versions.toml || true
+
       - name: Build Debug APK
         working-directory: extracted
         run: |
@@ -114,7 +117,7 @@ jobs:
       - name: Find APK
         if: success()
         run: |
-          echo "===== APK FILES ====="
+          echo "===== GENERATED APK ====="
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
