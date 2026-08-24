@@ -18,9 +18,9 @@ jobs:
         run: |
           unzip -q kunal-trader-live-ready.zip -d extracted
 
-      - name: Check Gradle Files
+      - name: Find Android Project
         run: |
           echo "=== GRADLE FILES ==="
           find extracted -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" -o -name "gradlew" \) -print
-          echo "=== FOLDERS ==="
+          echo "=== TOP FOLDERS ==="
           find extracted -maxdepth 3 -type d -print
