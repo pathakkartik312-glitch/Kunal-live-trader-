@@ -90,7 +90,7 @@ jobs:
       - name: Generate Gradle Wrapper
         working-directory: extracted
         run: |
-          gradle wrapper --gradle-version 8.14.3
+          gradle wrapper --gradle-version 9.3.1
 
       - name: Create Debug Keystore
         working-directory: extracted
