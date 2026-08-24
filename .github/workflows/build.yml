@@ -29,13 +29,44 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix Compose Compiler for Kotlin 2.2.10
+      
+        working-directory: extracted
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+       - name: Fix Compose Compiler Configuration
         working-directory: extracted
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
 
+          p = Path("app/build.gradle.kts")
+          text = p.read_text()
+
+          # Remove old Compose compiler configuration if present.
+          text = re.sub(
+              r'\n\s*composeOptions\s*\{.*?\n\s*\}',
+              '',
+              text,
+              flags=re.S
+          )
+
+          # Remove old explicit Compose compiler plugin version declarations.
+          text = re.sub(
+              r'id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\']\)\s*version\s*["\'][^"\']+["\']',
+              'id("org.jetbrains.kotlin.plugin.compose")',
+              text
+          )
+
+          p.write_text(text)
+
+          print("Compose compiler configuration cleaned.")
+          PY
+
+          echo "===== COMPOSE PLUGIN CONFIGURATION ====="
+          grep -n "compose" app/build.gradle.kts || true
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
