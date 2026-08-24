@@ -1,4 +1,4 @@
-name: Check Kunal Live Trader Configuration
+name: Build Kunal Live Trader APK
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,24 +20,90 @@ jobs:
           mkdir extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
 
-      - name: Show Project Configuration
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Fix Compose Compiler for Kotlin 2.2.10
         working-directory: extracted
         run: |
-          echo "===== SETTINGS ====="
-          cat settings.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-          echo "===== ROOT BUILD ====="
-          cat build.gradle.kts
+          p = Path("app/build.gradle.kts")
+          text = p.read_text()
 
-          echo "===== APP BUILD ====="
-          cat app/build.gradle.kts
+          # Remove old Compose compiler extension configuration.
+          text = re.sub(
+              r'\n\s*composeOptions\s*\{.*?\n\s*\}',
+              '',
+              text,
+              flags=re.S
+          )
 
-          echo "===== VERSION CATALOG ====="
-          if [ -f gradle/libs.versions.toml ]; then
-            cat gradle/libs.versions.toml
-          else
-            echo "libs.versions.toml NOT FOUND"
-          fi
+          # Remove old explicit Compose compiler dependency if present.
+          text = re.sub(
+              r'^\s*(implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler:[^"\']+["\']\s*\)\s*$',
+              '',
+              text,
+              flags=re.M
+          )
 
-          echo "===== GOOGLE SERVICES ====="
-          find . -name "google-services.json" -print
+          # Add the modern Kotlin Compose compiler plugin.
+          if 'org.jetbrains.kotlin.plugin.compose' not in text:
+              text = text.replace(
+                  'plugins {',
+                  'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
+                  1
+              )
+
+          p.write_text(text)
+          print("Compose compiler configuration updated.")
+          PY
+
+          echo "===== UPDATED APP BUILD ====="
+          sed -n '1,100p' app/build.gradle.kts
+
+      - name: Generate Gradle Wrapper
+        working-directory: extracted
+        run: |
+          gradle wrapper
+
+      - name: Create Debug Keystore
+        working-directory: extracted
+        run: |
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Build Debug APK
+        working-directory: extracted
+        run: |
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --stacktrace
+
+      - name: Find APK
+        if: success()
+        run: |
+          echo "Generated APK:"
+          find extracted -type f -name "*.apk" -print
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kunal-Live-Trader-APK
+          path: extracted/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
