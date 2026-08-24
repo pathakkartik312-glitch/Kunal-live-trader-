@@ -29,7 +29,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix Compose Plugin
+      - name: Inspect Project
+        working-directory: extracted
+        run: |
+          echo "===== APP BUILD FILE ====="
+          sed -n '1,80p' app/build.gradle.kts
+
+          echo "===== VERSION CATALOG ====="
+          grep -nE 'kotlin|compose|agp' gradle/libs.versions.toml || true
+
+      - name: Fix Duplicate Compose Plugin
         working-directory: extracted
         run: |
           python3 - <<'PY'
@@ -39,34 +48,38 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Remove every Compose plugin line.
-          text = re.sub(
-              r'^[ \t]*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*\n?',
+          # Find plugins block.
+          m = re.search(r'plugins\s*\{(.*?)\}', text, re.S)
+
+          if not m:
+              raise SystemExit("plugins block not found")
+
+          block = m.group(1)
+
+          # Remove ALL Compose plugin declarations from the plugins block.
+          block = re.sub(
+              r'(?m)^[ \t]*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*\n?',
               '',
-              text,
-              flags=re.MULTILINE
+              block
           )
 
-          # Add exactly ONE Compose plugin after plugins {
-          text = text.replace(
-              "plugins {",
-              'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
-              1
-          )
+          # Add exactly ONE Compose plugin declaration.
+          block = '\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"\n' + block
 
-          # Remove old composeOptions block.
+          text = text[:m.start(1)] + block + text[m.end(1):]
+
+          # Remove old composeOptions if present.
           text = re.sub(
               r'\n[ \t]*composeOptions\s*\{.*?\n[ \t]*\}',
               '',
               text,
-              flags=re.DOTALL
+              flags=re.S
           )
 
           p.write_text(text)
 
-          print("===== FINAL PLUGINS =====")
-          for line in text.splitlines()[:20]:
-              print(line)
+          print("===== FIXED PLUGINS BLOCK =====")
+          print(re.search(r'plugins\s*\{.*?\}', text, re.S).group(0))
           PY
 
       - name: Generate Gradle Wrapper
@@ -91,11 +104,14 @@ jobs:
         working-directory: extracted
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-configuration-cache --stacktrace
+          ./gradlew clean assembleDebug \
+            --no-configuration-cache \
+            --stacktrace
 
       - name: Find APK
         if: success()
         run: |
+          echo "===== APK ====="
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
