@@ -29,10 +29,17 @@ jobs:
       - name: Check Admin Integration
         working-directory: extracted
         run: |
-          echo "===== ADMIN REFERENCES ====="
-          grep -RniE "AdminScreens|AdminViewModel|admin|ADMIN" \
+          echo "===== ADMIN ROUTE REFERENCES ====="
+          grep -RniE \
+            "ADMIN_LOGIN|ADMIN_DASHBOARD|ADMIN_USERS|ADMIN_USER_DETAIL|ADMIN_KYC|ADMIN_DEPOSITS|ADMIN_WITHDRAWALS|ADMIN_BANKS|ADMIN_INSTRUMENTS|ADMIN_TRADES" \
             app/src/main/java/com/example \
-            --include="*.kt" | head -300 || true
+            --include="*.kt" || true
+
+          echo "===== ADMIN FILE REFERENCES ====="
+          grep -RniE \
+            "AdminScreens|AdminViewModel" \
+            app/src/main/java/com/example \
+            --include="*.kt" || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
