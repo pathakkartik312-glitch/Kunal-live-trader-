@@ -29,16 +29,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Inspect Project
-        working-directory: extracted
-        run: |
-          echo "===== APP BUILD FILE ====="
-          sed -n '1,80p' app/build.gradle.kts
-
-          echo "===== VERSION CATALOG ====="
-          grep -nE 'kotlin|compose|agp' gradle/libs.versions.toml || true
-
-      - name: Fix Duplicate Compose Plugin
+      - name: Fix Compose Plugin
         working-directory: extracted
         run: |
           python3 - <<'PY'
@@ -48,39 +39,53 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Find plugins block.
-          m = re.search(r'plugins\s*\{(.*?)\}', text, re.S)
-
-          if not m:
-              raise SystemExit("plugins block not found")
-
-          block = m.group(1)
-
-          # Remove ALL Compose plugin declarations from the plugins block.
-          block = re.sub(
-              r'(?m)^[ \t]*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*\n?',
+          # Remove Compose plugin declarations in ANY form:
+          # id("org.jetbrains.kotlin.plugin.compose")
+          # alias(libs.plugins.kotlin.compose)
+          # alias(libs.plugins.compose.compiler)
+          text = re.sub(
+              r'^[ \t]*(?:id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*|alias\([^\n]*compose[^\n]*\))[^\n]*\n?',
               '',
-              block
+              text,
+              flags=re.MULTILINE | re.IGNORECASE
           )
 
-          # Add exactly ONE Compose plugin declaration.
-          block = '\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"\n' + block
-
-          text = text[:m.start(1)] + block + text[m.end(1):]
-
-          # Remove old composeOptions if present.
+          # Remove old Compose compiler configuration.
           text = re.sub(
               r'\n[ \t]*composeOptions\s*\{.*?\n[ \t]*\}',
               '',
               text,
-              flags=re.S
+              flags=re.DOTALL
+          )
+
+          # Add exactly ONE Compose plugin.
+          match = re.search(r'plugins\s*\{', text)
+
+          if not match:
+              raise SystemExit("ERROR: plugins block not found")
+
+          insert_at = match.end()
+
+          text = (
+              text[:insert_at]
+              + '\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"'
+              + text[insert_at:]
           )
 
           p.write_text(text)
 
-          print("===== FIXED PLUGINS BLOCK =====")
-          print(re.search(r'plugins\s*\{.*?\}', text, re.S).group(0))
+          print("===== FINAL PLUGINS BLOCK =====")
+          m = re.search(r'plugins\s*\{.*?\}', text, re.DOTALL)
+          print(m.group(0) if m else "NOT FOUND")
           PY
+
+      - name: Verify No Duplicate Compose Plugin
+        working-directory: extracted
+        run: |
+          echo "===== COMPOSE REFERENCES ====="
+          grep -RniE \
+            'org\.jetbrains\.kotlin\.plugin\.compose|libs\.plugins\..*compose|composeOptions' \
+            app/build.gradle.kts gradle/libs.versions.toml build.gradle.kts || true
 
       - name: Generate Gradle Wrapper
         working-directory: extracted
@@ -111,7 +116,6 @@ jobs:
       - name: Find APK
         if: success()
         run: |
-          echo "===== APK ====="
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
