@@ -16,7 +16,36 @@ jobs:
 
       - name: Extract Project ZIP
         run: |
+          rm -rf extracted
+          mkdir extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
+
+      - name: Find Android Project
+        run: |
+          echo "Searching for Gradle project..."
+          find extracted -name gradlew -type f -print
+          find extracted -name settings.gradle -o -name settings.gradle.kts -print
+
+      - name: Locate Project
+        id: project
+        run: |
+          GRADLEW=$(find extracted -name gradlew -type f | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew was not found inside the ZIP."
+            echo "ZIP contents:"
+            find extracted -maxdepth 5 -type f | head -200
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+
+          echo "Gradle wrapper found:"
+          echo "$GRADLEW"
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -29,8 +58,10 @@ jobs:
 
       - name: Create Debug Keystore
         run: |
+          PROJECT_DIR="${{ steps.project.outputs.project_dir }}"
+
           keytool -genkeypair -v \
-            -keystore extracted/debug.keystore \
+            -keystore "$PROJECT_DIR/debug.keystore" \
             -storepass android \
             -keypass android \
             -alias androiddebugkey \
@@ -39,14 +70,24 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Build APK
-        working-directory: extracted
+      - name: Build Debug APK
         run: |
+          PROJECT_DIR="${{ steps.project.outputs.project_dir }}"
+
+          cd "$PROJECT_DIR"
+
           chmod +x gradlew
-          ./gradlew assembleDebug
+
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Find APK
+        run: |
+          echo "Searching for generated APK..."
+          find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Kunal-Live-Trader-APK
-          path: extracted/app/build/outputs/apk/debug/*.apk
+          path: extracted/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
