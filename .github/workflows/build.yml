@@ -43,7 +43,7 @@ jobs:
       - name: Build APK
         working-directory: extracted
         run: |
-        - name: Generate debug keystore
+       - name: Generate debug keystore
   run: |
    keytool -genkeypair -v \
       -keystore debug.keystore \
