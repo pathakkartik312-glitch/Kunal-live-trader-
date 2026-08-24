@@ -26,6 +26,14 @@ jobs:
           echo "===== PROJECT FILES ====="
           find . -type f | sort | head -1000
 
+      - name: Check Admin Integration
+        working-directory: extracted
+        run: |
+          echo "===== ADMIN REFERENCES ====="
+          grep -RniE "AdminScreens|AdminViewModel|admin|ADMIN" \
+            app/src/main/java/com/example \
+            --include="*.kt" | head -300 || true
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
