@@ -47,6 +47,31 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Show Project Configuration
+        working-directory: extracted
+        run: |
+          echo "===== SETTINGS ====="
+          cat settings.gradle.kts
+
+          echo "===== ROOT BUILD ====="
+          cat build.gradle.kts
+
+          echo "===== APP BUILD ====="
+          cat app/build.gradle.kts
+
+          echo "===== VERSION CATALOG ====="
+          if [ -f gradle/libs.versions.toml ]; then
+            cat gradle/libs.versions.toml
+          else
+            echo "libs.versions.toml NOT FOUND"
+          fi
+
+      - name: Check Google Services
+        working-directory: extracted
+        run: |
+          echo "Searching for google-services.json..."
+          find . -name "google-services.json" -print
+
       - name: Build Debug APK
         working-directory: extracted
         run: |
@@ -54,11 +79,13 @@ jobs:
           ./gradlew assembleDebug --stacktrace
 
       - name: Find APK
+        if: success()
         run: |
           echo "Generated APK:"
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Kunal-Live-Trader-APK
