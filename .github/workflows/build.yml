@@ -24,7 +24,7 @@ jobs:
         working-directory: extracted
         run: |
           echo "===== PROJECT FILES ====="
-          find . -maxdepth 4 -type f | sort | head -300
+          find . -type f | sort | head -1000
 
       - name: Setup Java
         uses: actions/setup-java@v4
