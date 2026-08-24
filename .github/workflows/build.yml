@@ -1,4 +1,4 @@
-name: Build Kunal Live Trader APK
+name: Build Kunal Live Trader - User + Admin APK
 
 on:
   workflow_dispatch:
@@ -20,39 +20,6 @@ jobs:
           mkdir extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
 
-      - name: Show Project Structure
-        working-directory: extracted
-        run: |
-          echo "===== PROJECT FILES ====="
-          find . -type f | sort | head -1000
-
-      - name: Check Admin Integration
-        working-directory: extracted
-        run: |
-          echo "===== ADMIN ROUTE REFERENCES ====="
-          grep -RniE \
-            "ADMIN_LOGIN|ADMIN_DASHBOARD|ADMIN_USERS|ADMIN_USER_DETAIL|ADMIN_KYC|ADMIN_DEPOSITS|ADMIN_WITHDRAWALS|ADMIN_BANKS|ADMIN_INSTRUMENTS|ADMIN_TRADES" \
-            app/src/main/java/com/example \
-            --include="*.kt" || true
-
-          echo "===== ADMIN FILE REFERENCES ====="
-          grep -RniE \
-            "AdminScreens|AdminViewModel" \
-            app/src/main/java/com/example \
-            --include="*.kt" || true
-
-      - name: Show MainActivity Admin Connection
-        working-directory: extracted
-        run: |
-          echo "===== MAIN ACTIVITY ADMIN CONNECTION ====="
-          sed -n '90,150p' app/src/main/java/com/example/MainActivity.kt
-
-      - name: Show App Gradle Configuration
-        working-directory: extracted
-        run: |
-          echo "===== APP GRADLE CONFIGURATION ====="
-          sed -n '1,220p' app/build.gradle.kts
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -72,6 +39,7 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
+          # Remove Compose plugin aliases/declarations
           text = re.sub(
               r'^[ \t]*(?:id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*|alias\([^\n]*compose[^\n]*\))[^\n]*\n?',
               '',
@@ -79,6 +47,7 @@ jobs:
               flags=re.MULTILINE | re.IGNORECASE
           )
 
+          # Remove old Compose compiler options
           text = re.sub(
               r'\n[ \t]*composeOptions\s*\{.*?\n[ \t]*\}',
               '',
@@ -100,27 +69,67 @@ jobs:
           )
 
           p.write_text(text)
-
-          print("===== FINAL PLUGINS BLOCK =====")
-          m = re.search(r'plugins\s*\{.*?\}', text, re.DOTALL)
-          print(m.group(0) if m else "NOT FOUND")
           PY
-
-      - name: Verify No Duplicate Compose Plugin
-        working-directory: extracted
-        run: |
-          echo "===== COMPOSE REFERENCES ====="
-          grep -RniE \
-            'org\.jetbrains\.kotlin\.plugin\.compose|libs\.plugins\..*compose|composeOptions' \
-            app/build.gradle.kts gradle/libs.versions.toml build.gradle.kts || true
 
       - name: Generate Gradle Wrapper
         working-directory: extracted
         run: |
           gradle wrapper --gradle-version 9.3.1
 
-      - name: Create Debug Keystore
-        working-directory: extracted
+      - name: Prepare User and Admin Projects
+        run: |
+          rm -rf user-build admin-build
+
+          cp -a extracted user-build
+          cp -a extracted admin-build
+
+          # USER APK package ID
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # User project
+          p = Path("user-build/app/build.gradle.kts")
+          text = p.read_text()
+          text = text.replace(
+              'applicationId = "com.example"',
+              'applicationId = "com.kunal.livetrader.user"'
+          )
+          p.write_text(text)
+
+          # Admin project
+          p = Path("admin-build/app/build.gradle.kts")
+          text = p.read_text()
+          text = text.replace(
+              'applicationId = "com.example"',
+              'applicationId = "com.kunal.livetrader.admin"'
+          )
+          p.write_text(text)
+          PY
+
+          # Disable Admin navigation in USER APK
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("user-build/app/src/main/java/com/example/MainActivity.kt")
+          text = p.read_text()
+
+          old = 'onNavigateAdmin = { navController.navigate(NavRoutes.ADMIN_LOGIN) }'
+          new = 'onNavigateAdmin = { }'
+
+          if old not in text:
+              raise SystemExit(
+                  "Could not find Admin navigation line in MainActivity.kt"
+              )
+
+          text = text.replace(old, new)
+          p.write_text(text)
+
+          print("User APK: Admin navigation disabled")
+          print("Admin APK: Admin navigation preserved")
+          PY
+
+      - name: Create User Debug Keystore
+        working-directory: user-build
         run: |
           keytool -genkeypair -v \
             -keystore debug.keystore \
@@ -130,25 +139,55 @@ jobs:
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+            -dname "CN=Kunal Live Trader User,O=Kunal,C=IN"
 
-      - name: Build Debug APK
-        working-directory: extracted
+      - name: Create Admin Debug Keystore
+        working-directory: admin-build
+        run: |
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Kunal Live Trader Admin,O=Kunal,C=IN"
+
+      - name: Build User APK
+        working-directory: user-build
         run: |
           chmod +x gradlew
           ./gradlew clean assembleDebug \
             --no-configuration-cache \
             --stacktrace
 
-      - name: Find APK
-        if: success()
+      - name: Build Admin APK
+        working-directory: admin-build
         run: |
-          find extracted -type f -name "*.apk" -print
+          chmod +x gradlew
+          ./gradlew clean assembleDebug \
+            --no-configuration-cache \
+            --stacktrace
 
-      - name: Upload APK
-        if: success()
+      - name: Find Both APKs
+        run: |
+          echo "===== USER APK ====="
+          find user-build -type f -name "*.apk" -print
+
+          echo "===== ADMIN APK ====="
+          find admin-build -type f -name "*.apk" -print
+
+      - name: Upload User APK
         uses: actions/upload-artifact@v4
         with:
-          name: Kunal-Live-Trader-APK
-          path: extracted/**/build/outputs/apk/debug/*.apk
+          name: Kunal-Live-Trader-USER-APK
+          path: user-build/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload Admin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kunal-Live-Trader-ADMIN-APK
+          path: admin-build/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
