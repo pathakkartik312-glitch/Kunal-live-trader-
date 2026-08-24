@@ -1,13 +1,26 @@
-      - name: Check Extracted Project
-        run: |
-          echo "=== ALL GRADLE FILES ==="
-          find extracted -type f \( \
-            -name "settings.gradle" \
-            -o -name "settings.gradle.kts" \
-            -o -name "build.gradle" \
-            -o -name "build.gradle.kts" \
-            -o -name "gradlew" \
-          \) -print
+name: Build Kunal Live Trader APK
 
-          echo "=== EXTRACTED FOLDERS ==="
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP
+        run: |
+          unzip -q kunal-trader-live-ready.zip -d extracted
+
+      - name: Check Gradle Files
+        run: |
+          echo "=== GRADLE FILES ==="
+          find extracted -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" -o -name "gradlew" \) -print
+          echo "=== FOLDERS ==="
           find extracted -maxdepth 3 -type d -print
