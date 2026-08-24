@@ -17,7 +17,7 @@ jobs:
       - name: Extract Project ZIP
         run: |
           rm -rf extracted
-          mkdir extracted
+          mkdir -p extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
 
       - name: Setup Java
@@ -29,13 +29,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      
-        working-directory: extracted
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-       - name: Fix Compose Compiler Configuration
+      - name: Fix Compose Compiler Configuration
         working-directory: extracted
         run: |
           python3 - <<'PY'
@@ -45,7 +39,7 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Remove old Compose compiler configuration if present.
+          # Remove old composeOptions block
           text = re.sub(
               r'\n\s*composeOptions\s*\{.*?\n\s*\}',
               '',
@@ -53,32 +47,7 @@ jobs:
               flags=re.S
           )
 
-          # Remove old explicit Compose compiler plugin version declarations.
-          text = re.sub(
-              r'id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\']\)\s*version\s*["\'][^"\']+["\']',
-              'id("org.jetbrains.kotlin.plugin.compose")',
-              text
-          )
-
-          p.write_text(text)
-
-          print("Compose compiler configuration cleaned.")
-          PY
-
-          echo "===== COMPOSE PLUGIN CONFIGURATION ====="
-          grep -n "compose" app/build.gradle.kts || true
-          p = Path("app/build.gradle.kts")
-          text = p.read_text()
-
-          # Remove old Compose compiler extension configuration.
-          text = re.sub(
-              r'\n\s*composeOptions\s*\{.*?\n\s*\}',
-              '',
-              text,
-              flags=re.S
-          )
-
-          # Remove old explicit Compose compiler dependency if present.
+          # Remove old Compose compiler dependency lines
           text = re.sub(
               r'^\s*(implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler:[^"\']+["\']\s*\)\s*$',
               '',
@@ -86,20 +55,31 @@ jobs:
               flags=re.M
           )
 
-          # Add the modern Kotlin Compose compiler plugin.
-          if 'org.jetbrains.kotlin.plugin.compose' not in text:
-              text = text.replace(
-                  'plugins {',
-                  'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
-                  1
-              )
+          # Remove duplicate Compose plugin declarations.
+          lines = text.splitlines()
+          result = []
+          compose_found = False
 
+          for line in lines:
+              if 'org.jetbrains.kotlin.plugin.compose' in line:
+                  if compose_found:
+                      continue
+                  compose_found = True
+                  line = re.sub(
+                      r'\s+version\s+["\'][^"\']+["\']',
+                      '',
+                      line
+                  )
+              result.append(line)
+
+          text = '\n'.join(result) + '\n'
           p.write_text(text)
-          print("Compose compiler configuration updated.")
+
+          print("Compose compiler configuration cleaned.")
           PY
 
-          echo "===== UPDATED APP BUILD ====="
-          sed -n '1,100p' app/build.gradle.kts
+          echo "===== COMPOSE CONFIGURATION ====="
+          grep -n "org.jetbrains.kotlin.plugin.compose\|composeOptions\|compose.compiler" app/build.gradle.kts || true
 
       - name: Generate Gradle Wrapper
         working-directory: extracted
@@ -128,7 +108,7 @@ jobs:
       - name: Find APK
         if: success()
         run: |
-          echo "Generated APK:"
+          echo "===== GENERATED APK ====="
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
