@@ -41,6 +41,12 @@ jobs:
             app/src/main/java/com/example \
             --include="*.kt" || true
 
+      - name: Show MainActivity Admin Connection
+        working-directory: extracted
+        run: |
+          echo "===== MAIN ACTIVITY ADMIN CONNECTION ====="
+          sed -n '90,150p' app/src/main/java/com/example/MainActivity.kt
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
