@@ -20,6 +20,12 @@ jobs:
           mkdir extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
 
+      - name: Show Project Structure
+        working-directory: extracted
+        run: |
+          echo "===== PROJECT FILES ====="
+          find . -maxdepth 4 -type f | sort | head -300
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -39,10 +45,6 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Remove Compose plugin declarations in ANY form:
-          # id("org.jetbrains.kotlin.plugin.compose")
-          # alias(libs.plugins.kotlin.compose)
-          # alias(libs.plugins.compose.compiler)
           text = re.sub(
               r'^[ \t]*(?:id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*|alias\([^\n]*compose[^\n]*\))[^\n]*\n?',
               '',
@@ -50,7 +52,6 @@ jobs:
               flags=re.MULTILINE | re.IGNORECASE
           )
 
-          # Remove old Compose compiler configuration.
           text = re.sub(
               r'\n[ \t]*composeOptions\s*\{.*?\n[ \t]*\}',
               '',
@@ -58,7 +59,6 @@ jobs:
               flags=re.DOTALL
           )
 
-          # Add exactly ONE Compose plugin.
           match = re.search(r'plugins\s*\{', text)
 
           if not match:
