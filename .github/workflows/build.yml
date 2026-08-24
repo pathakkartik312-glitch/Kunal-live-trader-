@@ -17,7 +17,7 @@ jobs:
       - name: Extract Project ZIP
         run: |
           rm -rf extracted
-          mkdir -p extracted
+          mkdir extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
 
       - name: Setup Java
@@ -29,7 +29,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix Compose Compiler Configuration
+      - name: Fix Kotlin Compose Configuration
         working-directory: extracted
         run: |
           python3 - <<'PY'
@@ -39,52 +39,58 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Remove old composeOptions block
+          # Remove ALL Compose compiler plugin declarations from app module.
+          text = re.sub(
+              r'^\s*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\']\)(?:\s+version\s+["\'][^"\']+["\'])?\s*$',
+              '',
+              text,
+              flags=re.MULTILINE
+          )
+
+          # Remove old composeOptions block.
           text = re.sub(
               r'\n\s*composeOptions\s*\{.*?\n\s*\}',
               '',
               text,
-              flags=re.S
+              flags=re.DOTALL
           )
 
-          # Remove old Compose compiler dependency lines
+          # Remove old Compose compiler dependencies.
           text = re.sub(
-              r'^\s*(implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler:[^"\']+["\']\s*\)\s*$',
+              r'^\s*(?:implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler:[^"\']+["\']\s*\)\s*$',
               '',
               text,
-              flags=re.M
+              flags=re.MULTILINE
           )
 
-          # Remove duplicate Compose plugin declarations.
-          lines = text.splitlines()
-          result = []
-          compose_found = False
+          # Clean empty duplicate blank lines.
+          text = re.sub(r'\n{3,}', '\n\n', text)
 
-          for line in lines:
-              if 'org.jetbrains.kotlin.plugin.compose' in line:
-                  if compose_found:
-                      continue
-                  compose_found = True
-                  line = re.sub(
-                      r'\s+version\s+["\'][^"\']+["\']',
-                      '',
-                      line
-                  )
-              result.append(line)
-
-          text = '\n'.join(result) + '\n'
           p.write_text(text)
 
-          print("Compose compiler configuration cleaned.")
+          print("===== FINAL APP BUILD FILE =====")
+          print(text)
           PY
 
-          echo "===== COMPOSE CONFIGURATION ====="
-          grep -n "org.jetbrains.kotlin.plugin.compose\|composeOptions\|compose.compiler" app/build.gradle.kts || true
+      - name: Verify Project
+        working-directory: extracted
+        run: |
+          echo "===== SETTINGS ====="
+          cat settings.gradle.kts
+
+          echo "===== ROOT BUILD ====="
+          cat build.gradle.kts
+
+          echo "===== APP BUILD ====="
+          cat app/build.gradle.kts
+
+          echo "===== VERSION CATALOG ====="
+          grep -nE 'kotlin|compose|ksp|agp' gradle/libs.versions.toml || true
 
       - name: Generate Gradle Wrapper
         working-directory: extracted
         run: |
-          gradle wrapper
+          gradle wrapper --gradle-version 9.7.0
 
       - name: Create Debug Keystore
         working-directory: extracted
@@ -103,12 +109,12 @@ jobs:
         working-directory: extracted
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug --stacktrace
+          ./gradlew clean assembleDebug --no-configuration-cache --stacktrace
 
       - name: Find APK
         if: success()
         run: |
-          echo "===== GENERATED APK ====="
+          echo "===== APK FILES ====="
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
