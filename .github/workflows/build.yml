@@ -29,7 +29,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix Kotlin and Compose Configuration
+      - name: Fix Compose Plugin
         working-directory: extracted
         run: |
           python3 - <<'PY'
@@ -39,46 +39,34 @@ jobs:
           p = Path("app/build.gradle.kts")
           text = p.read_text()
 
-          # Remove ALL Compose compiler plugin declarations.
+          # Remove every Compose plugin line.
           text = re.sub(
-              r'^\s*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\']\).*?$',
+              r'^[ \t]*id\(["\']org\.jetbrains\.kotlin\.plugin\.compose["\'][^\n]*\n?',
               '',
               text,
               flags=re.MULTILINE
           )
 
-          # Remove old Compose compiler options.
-          text = re.sub(
-              r'\n\s*composeOptions\s*\{.*?\n\s*\}',
-              '',
-              text,
-              flags=re.S
+          # Add exactly ONE Compose plugin after plugins {
+          text = text.replace(
+              "plugins {",
+              'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
+              1
           )
 
-          # Remove old Compose compiler dependencies.
+          # Remove old composeOptions block.
           text = re.sub(
-              r'^\s*(implementation|kotlinCompilerPluginClasspath)\s*\(\s*["\']androidx\.compose\.compiler[^)]*\)\s*$',
+              r'\n[ \t]*composeOptions\s*\{.*?\n[ \t]*\}',
               '',
               text,
-              flags=re.MULTILINE
+              flags=re.DOTALL
           )
 
           p.write_text(text)
 
-          # Add Compose plugin exactly once, matching Kotlin 2.2.10.
-          text = p.read_text()
-
-          if 'id("org.jetbrains.kotlin.plugin.compose")' not in text:
-              text = text.replace(
-                  "plugins {",
-                  'plugins {\n    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
-                  1
-              )
-
-          p.write_text(text)
-
-          print("===== FINAL APP BUILD FILE =====")
-          print(p.read_text())
+          print("===== FINAL PLUGINS =====")
+          for line in text.splitlines()[:20]:
+              print(line)
           PY
 
       - name: Generate Gradle Wrapper
@@ -99,15 +87,6 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Verify Compose Plugin
-        working-directory: extracted
-        run: |
-          echo "===== COMPOSE REFERENCES ====="
-          grep -Rni "compose.plugin\|composeOptions\|compose.compiler" \
-            app/build.gradle.kts \
-            build.gradle.kts \
-            gradle/libs.versions.toml || true
-
       - name: Build Debug APK
         working-directory: extracted
         run: |
@@ -117,7 +96,6 @@ jobs:
       - name: Find APK
         if: success()
         run: |
-          echo "===== GENERATED APK ====="
           find extracted -type f -name "*.apk" -print
 
       - name: Upload APK
