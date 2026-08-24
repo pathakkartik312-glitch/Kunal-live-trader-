@@ -1,4 +1,4 @@
-name: Build Kunal Live Trader APK
+name: Check Kunal Live Trader Configuration
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,33 +19,6 @@ jobs:
           rm -rf extracted
           mkdir extracted
           unzip -q kunal-trader-live-ready.zip -d extracted
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Generate Gradle Wrapper
-        working-directory: extracted
-        run: |
-          gradle wrapper
-
-      - name: Create Debug Keystore
-        working-directory: extracted
-        run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -storepass android \
-            -keypass android \
-            -alias androiddebugkey \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Show Project Configuration
         working-directory: extracted
@@ -66,28 +39,5 @@ jobs:
             echo "libs.versions.toml NOT FOUND"
           fi
 
-      - name: Check Google Services
-        working-directory: extracted
-        run: |
-          echo "Searching for google-services.json..."
+          echo "===== GOOGLE SERVICES ====="
           find . -name "google-services.json" -print
-
-      - name: Build Debug APK
-        working-directory: extracted
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-
-      - name: Find APK
-        if: success()
-        run: |
-          echo "Generated APK:"
-          find extracted -type f -name "*.apk" -print
-
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kunal-Live-Trader-APK
-          path: extracted/**/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
