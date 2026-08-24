@@ -47,6 +47,12 @@ jobs:
           echo "===== MAIN ACTIVITY ADMIN CONNECTION ====="
           sed -n '90,150p' app/src/main/java/com/example/MainActivity.kt
 
+      - name: Show App Gradle Configuration
+        working-directory: extracted
+        run: |
+          echo "===== APP GRADLE CONFIGURATION ====="
+          sed -n '1,220p' app/build.gradle.kts
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
